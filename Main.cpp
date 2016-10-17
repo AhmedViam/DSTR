@@ -59,6 +59,7 @@ typedef struct Order {
 
 	int OrderID;
 	char clientName[256];
+	char email[256];
 	char menueName[256];
 	char clientAddress[256];
 	char clientNumber[256];
@@ -67,7 +68,6 @@ typedef struct Order {
 	char caterLocation[256];
 	int cost;
 	int priority;
-
 	Order * onext;
 	Order * oprev;
 
@@ -101,6 +101,29 @@ Order * ordercontainer[max_records];
 */
 
 
+int comparePrice(const void * a, const void * b) {
+	struct Menue * ia = (struct Menue *) a;
+	struct Menue * ib = (struct Menue *) b;
+	return (int)(100.f * ia->Price - 100.f * ib->Price);
+
+}
+
+int compareDate(const void * a,
+	const void * b) {
+	struct Order * ia = (struct Order *) a;
+	struct Order * ib = (struct Order *) b;
+	return (int)(100.f * ia->caterdatestamp - 100.f * ib->caterdatestamp);
+
+}
+
+int comparePriority(const void * a,
+	const void * b) {
+	struct Order * ia = (struct Order *) a;
+	struct Order * ib = (struct Order *) b;
+	return (int)(100.f * ia->priority - 100.f * ib->priority);
+
+}
+
 
 /*
 * Description: Set the colour handle
@@ -119,14 +142,14 @@ int aesthetic() {
 /* Prototype declarations */
 
 void addMenue(char * dishName, char * MainCoure, float Price, char * Dessert, char * Drink);
-void addOrder(char * clientName, char * clientAddress, char * clientNumber, int numGuest, char * caterLocation, char * menueName, int priority);
+void addOrder(char * clientName, char * clientAddress, char * clientNumber, int numGuest, char * caterLocation, char * menueName, int priority, char * email);
 
 void deleteOrder();
 void deleteMenue();
 
-void SendEmail(char * email, Order thisorder);
+void SendEmail(char * email, Order thisorder, string t);
 void searchMenue();
-
+void searchOrder();
 void viewMenue();
 void viewOrder();
 
@@ -204,13 +227,17 @@ std::string time_t_to_string(time_t t) {
 */
 
 
-void addOrder(char * clientName, char * clientAddress, char * clientNumber, int numGuest, char * caterLocation, char * chosenMenue, int priority) {
+void addOrder(char * clientName, char * clientAddress, char * clientNumber, int numGuest, char * caterLocation, char * chosenMenue, int priority, char * email) {
 
 	int counts = 0;
 	HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
 	SetConsoleTextAttribute(hConsole, FOREGROUND_BLUE);
 
+	std::time_t result = std::time(nullptr);
 
+	string t;
+	t = asctime(localtime(&result));
+	cout << t;
 	FILE * ReadHeader;
 	ReadHeader = fopen("MenueData.vf", "rb");
 	struct Menue people[max_records];
@@ -218,7 +245,13 @@ void addOrder(char * clientName, char * clientAddress, char * clientNumber, int 
 	char menuename[256];
 	struct Order client;
 	int thiscost;
-	
+	/* Access the struct data with the correct offset with relation to section count */
+	while (fread(&input, sizeof(struct Menue), 1, ReadHeader)) {
+		if (strcmp(input.dishName, chosenMenue) == 0) {
+			thiscost = numGuest * input.Price;
+			found = true;
+		}
+	}
 
 	if (found == false) {
 		printf("No menue name of %s found \n", chosenMenue);
@@ -248,9 +281,20 @@ void addOrder(char * clientName, char * clientAddress, char * clientNumber, int 
 
 	seconds = difftime(timer, mktime(&y2k));
 
-	int long long y = (int)round(seconds);
+	//int long long y = (int)round(seconds);
 
-	
+	randNum = rand() % (9000 - 2000 + 1) + 2000 * (thiscost * 0.1);
+	strcpy(client.clientName, clientName);
+	strcpy(client.clientAddress, clientAddress);
+	strcpy(client.clientNumber, clientNumber);
+	client.numGuest = numGuest;
+	client.priority = priority;
+	strcpy(client.caterLocation, caterLocation);
+	client.cost = thiscost;
+	client.OrderID = randNum;
+	client.caterdatestamp = seconds;
+	strcpy(client.menueName, chosenMenue);
+
 
 	FILE * strcont;
 
@@ -276,8 +320,8 @@ void addOrder(char * clientName, char * clientAddress, char * clientNumber, int 
 	printf("\nOrderID = %d\nClientName = %s\nclientAddress = %s\nclientNumber = %s\numGuest = %d\ncaterdatestamp =  %llu\ncaterLocation = %s\ncost = %d\nMenue = %s\nPriority = %d\n", client.OrderID, client.clientName, client.clientAddress, client.clientNumber, client.numGuest, client.caterdatestamp, client.caterLocation, client.cost, client.menueName, client.priority);
 
 	printf("New record added\n");
-	Sleep(5000);
-	SendEmail("viamtmp@gmail.com", client);
+	Sleep(2000);
+	SendEmail(email, client,t);
 
 }
 
@@ -297,11 +341,6 @@ void deleteMenue() {
 	SetConsoleTextAttribute(hConsole, FOREGROUND_RED);
 	int counts = 0;
 	int j = 0;
-
-
-
-
-
 
 
 	FILE * ReaderPointer;
@@ -332,10 +371,18 @@ void deleteMenue() {
 			printf("\nDeleting %s\n", input.dishName);
 			Sleep(400);
 			system("pause");
+
+			for (c = j; c < counts; c++) {
+				container[c] = container[c + 1];
+			}
+			FILE * output;
+			output = fopen("MenueData.vf", "wb");
+			fwrite(container, sizeof(struct Menue), (counts - 1), output);
+			fclose(output);
+			return;
 		}
 
 		j++;
-    
 	}
 
 	if (found == false) {
@@ -346,22 +393,10 @@ void deleteMenue() {
 }
 
 
-
-
-
-
-
-
-
 /*
 * Description:  Delete a Order object from struct, remember to shift struct accordingly
 * Return : Void
 */
-
-
-
-
-
 
 
 void deleteOrder() {
@@ -376,18 +411,32 @@ void deleteOrder() {
 	FILE * ReaderPointer;
 	ReaderPointer = fopen("OrderData.vf", "rb");
 
+	struct Order input;
+	struct Order container[max_records];
+	while (fread(&input, sizeof(struct Order), 1, ReaderPointer)) {
+		container[counts] = input;
+		counts++;
+
+	}
+	fclose(ReaderPointer);
+
+	printf("Type the ID of the Order you wish to delete.\n");
+
+	FILE * Reader;
+	Reader = fopen("OrderData.vf", "rb");
+	char nullStr[20] = {
+		"\0"
+	};
 
 
 	cin >> inputs;
-
-
 
 
 	while (fread(&input, sizeof(struct Order), 1, Reader)) {
 		if (input.OrderID == inputs) {
 			fclose(ReaderPointer);
 			printf("Below is the Order found\n");
-			printf("\OrderID = %d\nClientName = %s\nclientAddress = %s\nclientNumber = %s\numGuest = %d\ncaterdatestamp = %llu\ncaterLocation = %s\ncost = %d\nMenue = %s\nPriority = %d\n",
+			printf("\nOrderID = %d\nClientName = %s\nclientAddress = %s\nclientNumber = %s\numGuest = %d\ncaterdatestamp = %llu\ncaterLocation = %s\ncost = %d\nMenue = %s\nPriority = %d\n",
 				input.OrderID, input.clientName, input.clientAddress, input.clientNumber, input.numGuest, input.caterdatestamp, input.caterLocation, input.cost, input.menueName), input.priority;
 			found = true;
 			printf("\nDeleting %d\n", input.OrderID);
@@ -397,6 +446,7 @@ void deleteOrder() {
 			for (c = j; c < counts; c++) {
 				container[c] = container[c + 1];
 			}
+
 			FILE * output;
 			output = fopen("OrderData.vf", "wb");
 			fwrite(container, sizeof(struct Order), (counts - 1), output);
@@ -416,15 +466,10 @@ void deleteOrder() {
 
 
 
-
-
 /*
 * Description:  Search menue struct for a specific object
 * Return : Void
 */
-
-
-
 
 
 
@@ -464,6 +509,46 @@ void searchMenue() {
 }
 
 
+void searchOrder() {
+
+
+	HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
+	SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_INTENSITY);
+	int in;
+	FILE * ReadHeader;
+	ReadHeader = fopen("OrderData.vf", "rb");
+	FILE * ReaderPointer;
+	ReaderPointer = fopen("OrderData.vf", "rb");
+	struct Order input;
+
+	printf("Type the ID of the Order\n");
+	cin >> in;
+	while (!cin) {
+		cout << "\n ERROR, enter a number ";
+		cin.clear();
+		cin.ignore(256, '\n');
+		cin >> in;
+	}
+
+	/* Access the struct data with the correct offset with relation to section count */
+	while (fread(&input, sizeof(struct Order), 1, ReadHeader)) {
+		if (in == input.OrderID) {
+			printf("\nOrderID = %d\nClientName = %s\nclientAddress = %s\nclientNumber = %s\numGuest = %d\ncaterdatestamp = %llu\ncaterLocation = %s\ncost = %d\nMenue = %s\nPriority = %d",
+				input.OrderID, input.clientName, input.clientAddress, input.clientNumber, input.numGuest, input.caterdatestamp, input.caterLocation, input.cost, input.menueName, input.priority);
+			found = true;
+			printf("\n");
+			system("pause");
+		}
+	}
+	if (found == false) {
+		printf("No Order under the ID %d found \n", in);
+		printf("\n");
+		system("pause");
+		Sleep(600);
+	}
+
+}
+
 
 /*
 * Description:  Remove any repeated structs due to anomalies
@@ -480,21 +565,16 @@ void removeDuplicatesmenue(struct Menue * head) {
 
 
 	while (current->next != NULL) {
-
 		if (strcmp(current->dishName, current->next->dishName) == false) {
 			next_next = current->next->next;
 			free(current->next);
 			current->next = next_next;
 		}
 		else{
-
 			current = current->next;
 		}
 	}
 }
-
-
-
 
 
 
@@ -521,8 +601,6 @@ void removeDuplicatesorder(struct Order * ohead) {
 }
 
 
-
-
 /*
 * Description:  Iterate through the Menue struct
 * Return : Void
@@ -543,6 +621,49 @@ void viewMenue() {
 	ReaderPointer = fopen("MenueData.vf", "rb");
 	struct Menue people[max_records];
 	struct Menue input;
+
+	printf("Retrieving Menue list ...\n");
+	while (fread(&input, sizeof(struct Menue), 1, ReaderPointer)) {
+		people[menue_count] = input;
+		menue_count++;
+		found = true;
+	}
+
+	if (found == false) {
+		printf("\nNo records found");
+		printf("\n");
+		system("pause");
+		return;
+	}
+
+
+	qsort(people, menue_count, sizeof(struct Menue), comparePrice);
+
+	newnode = new Menue;
+	strcpy(newnode->Dessert, people[0].Dessert);
+	strcpy(newnode->dishName, people[0].dishName);
+	strcpy(newnode->Drink, people[0].Drink);
+	strcpy(newnode->MainCoure, people[0].MainCoure);
+	newnode->Price = people[0].Price;
+	newnode->prev = NULL;
+	newnode->next = NULL;
+	head = newnode;
+	tail = newnode;
+
+	for (g = 1; g < menue_count; g++) {
+
+		if (g == menue_count) {
+			newnode = new Menue;
+			strcpy(newnode->Dessert, people[g].Dessert);
+			strcpy(newnode->dishName, people[g].dishName);
+			strcpy(newnode->Drink, people[g].Drink);
+			strcpy(newnode->MainCoure, people[g].MainCoure);
+			newnode->Price = people[g].Price;
+			newnode->prev = tail;
+			tail->next = newnode;
+			tail = newnode;
+			tail->next = NULL;
+		}
 
 		newnode = new Menue;
 		strcpy(newnode->Dessert, people[g].Dessert);
@@ -618,6 +739,7 @@ void viewOrder() {
 	ordernode->priority = thisorder[0].priority;
 	ordernode->caterdatestamp = thisorder[0].caterdatestamp;
 	ordernode->oprev = NULL;
+	ordernode->onext = NULL;
 	ohead = ordernode;
 	otail = ordernode;
 
@@ -677,7 +799,7 @@ void viewOrder() {
 
 
 
-void SendEmail(char * email, Order thisorder) {
+void SendEmail(char * email, Order thisorder, string t) {
 
 
 	Order mailOrder = thisorder; 
@@ -695,10 +817,13 @@ void SendEmail(char * email, Order thisorder) {
 	std::string OrderID = std::to_string(thisorder.OrderID);
 	std::string Guest = std::to_string(thisorder.numGuest);
 	std::string Cost = std::to_string(thisorder.cost);
-	std::string body = std::string("The orderID is " + OrderID + "\nNumber of guests are " + Guest + "\nCost is " + Cost + "Client name is"+ thisorder.clientName);
+	std::string body = std::string("The orderID is " + OrderID + "\nNumber of guests are " + Guest + "\nCost is " + Cost + "\nClient name is "+ thisorder.clientName + "\nOrder Date and time is " + t);
 
 
 	const char * cstr = body.c_str();
+
+	oSmtp->UserName = _T("viamtmp@gmail.com");
+	oSmtp->Password = _T("pdqlidwnnjaecqkt");
 
 	oSmtp->FromAddr = ("viamtmp@gmail.com");
 	oSmtp->AddRecipientEx((email), 0);
@@ -788,6 +913,8 @@ int main() {
 			}
 			case 'A':
 			{
+				int p;
+				int  o = 0;
 				system("cls");
 
 				struct Menue people;
@@ -800,7 +927,20 @@ int main() {
 				scanf("%s", people.MainCoure);
 
 				printf("Price: ");
-				scanf("%f", &people.Price);
+				cin >> p;
+				while (!cin) {
+					cout << "\n ERROR, enter a number ";
+					cin.clear();
+					cin.ignore(256, '\n');
+					cin >> p;
+				}
+				while (p<0) {
+					cout << "\n ERROR, less than 0";
+					cin.clear();
+					cin.ignore(256, '\n');
+					cin >> p;
+				}
+				people.Price = p;
 
 				printf("Dessert: ");
 				scanf("%s", people.Dessert);
@@ -839,6 +979,7 @@ int main() {
 
 			case 'A':
 			{
+				int p = 0;
 				system("cls");
 
 				struct Order thisorder;
@@ -852,6 +993,9 @@ int main() {
 
 				scanf("%s", menuename);
 
+				printf("Email: ");
+				scanf("%s", thisorder.email);
+
 				printf("clientAddress: ");
 				scanf("%s", thisorder.clientAddress);
 
@@ -859,17 +1003,37 @@ int main() {
 				scanf("%s", thisorder.clientNumber);
 
 				printf("numGuest: ");
-				scanf("%d", &thisorder.numGuest);
+				cin >> p;
+				while (!cin) {
+					cout << "\n ERROR, enter a number ";
+					cin.clear();
+					cin.ignore(256, '\n');
+					cin >> p;
+				}
+				while (p<0) {
+					cout << "\n ERROR, less than 0";
+					cin.clear();
+					cin.ignore(256, '\n');
+					cin >> p;
+				}
+				thisorder.numGuest = p;
 
 				printf("caterLocation ");
 				scanf("%s", thisorder.caterLocation);
 
-				printf("Priority 1 = normal , 2 = high ");
-				scanf("%d", &thisorder.priority);
+				printf("Priority 1 = High , 2 = Normal ");
+				cin >> p;
+				while (!cin) {
+					cout << "\n ERROR, enter a number ";
+					cin.clear();
+					cin.ignore(256, '\n');
+					cin >> p;
+				}
+				thisorder.priority = p;
 
-				addOrder(thisorder.clientName, thisorder.clientAddress, thisorder.clientNumber, thisorder.numGuest, thisorder.caterLocation, menuename, thisorder.priority);
+				addOrder(thisorder.clientName, thisorder.clientAddress, thisorder.clientNumber, thisorder.numGuest, thisorder.caterLocation, menuename, thisorder.priority,thisorder.email);
 
-
+				
 				Sleep(1000);
 				break;
 			}
@@ -884,6 +1048,13 @@ int main() {
 			{
 				deleteOrder();
 
+				break;
+			}
+
+
+			case 'S':
+			{
+				searchOrder();
 				break;
 			}
 
@@ -926,9 +1097,67 @@ int navigateMenue(Menue * head) {
 
 	do {
 
-
 		printf("To view first press s, to view last press l, to go previous press p and to go forward press f \n");
 		scanf("%s", &ans);
+
+		switch (ans) {
+
+		case 's':
+		{
+			system("cls");
+			temp = head;
+			printf("\nDishName = %s \nMainCourse = %s\nDrink = %s\nDessert = %s\nPrice = %f\n",
+				temp->dishName, temp->MainCoure, temp->Drink, temp->Dessert, temp->Price);
+			break;
+		}
+
+		case 'l':
+		{
+			system("cls");
+			while (temp->next != NULL)
+				temp = temp->next;
+			printf("\nDishName = %s \nMainCourse = %s\nDrink = %s\nDessert = %s\nPrice = %f\n",
+				temp->dishName, temp->MainCoure, temp->Drink, temp->Dessert, temp->Price);
+
+			break;
+		}
+
+		case 'p':
+		{
+			system("cls");
+			if (temp->prev != NULL) {
+				temp = temp->prev;
+				printf("\nDishName = %s \nMainCourse = %s\nDrink = %s\nDessert = %s\nPrice = %f\n",
+					temp->dishName, temp->MainCoure, temp->Drink, temp->Dessert, temp->Price);
+			}
+			else {
+				printf("This is the first record, cannot go any back\n");
+				printf("\nDishName = %s \nMainCourse = %s\nDrink = %s\nDessert = %s\nPrice = %f\n",
+					temp->dishName, temp->MainCoure, temp->Drink, temp->Dessert, temp->Price);
+			}
+			break;
+		}
+
+		case 'f':
+		{
+			system("cls");
+			if (temp->next != NULL) {
+				temp = temp->next;
+				printf("\nDishName = %s \nMainCourse = %s\nDrink = %s\nDessert = %s\nPrice = %f\n",
+					temp->dishName, temp->MainCoure, temp->Drink, temp->Dessert, temp->Price);
+			}
+			else {
+				printf("This is the last record, cannot go any further\n");
+				printf("\nDishName = %s \nMainCourse = %s\nDrink = %s\nDessert = %s\nPrice = %f\n",
+					temp->dishName, temp->MainCoure, temp->Drink, temp->Dessert, temp->Price);
+			}
+			break;
+		}
+
+		case 'q':
+		{
+			return 0;
+		}
 		default:
 			printf("\nWrong input\n");
 			Sleep(600);
@@ -938,22 +1167,17 @@ int navigateMenue(Menue * head) {
 }
 
 
-
 int navigateOrder(Order * ohead) {
 
 	Order * temp = ohead;
 
 
-
 	do {
-
 
 		printf("\nTo view first press s, to view last press l, to go previous press p and to go forward press f \n");
 		scanf("%s", &ans);
 
-
 		switch (ans) {
-    
 
 		case 's':
 		{
@@ -962,23 +1186,18 @@ int navigateOrder(Order * ohead) {
 				temp = temp->oprev;
 
 
-			printf("\OrderID = %d\nClientName = %s\nclientAddress = %s\nclientNumber = %s\numGuest = %d\ncaterdatestamp = %llu\ncaterLocation = %s\ncost = %d\nMenue = %s\nPriority = %d",
+			printf("\nOrderID = %d\nClientName = %s\nclientAddress = %s\nclientNumber = %s\numGuest = %d\ncaterdatestamp = %llu\ncaterLocation = %s\ncost = %d\nMenue = %s\nPriority = %d",
 				temp->OrderID, temp->clientName, temp->clientAddress, temp->clientNumber, temp->numGuest, temp->caterdatestamp, temp->caterLocation, temp->cost, temp->menueName, temp->priority);
 			break;
 
 		}
-
-
-
-
-
 
 		case 'l':
 		{
 			system("cls");
 			while (temp->onext != NULL)
 				temp = temp->onext;
-			printf("\OrderID = %d\nClientName = %s\nclientAddress = %s\nclientNumber = %s\numGuest = %d\ncaterdatestamp = %llu\ncaterLocation = %s\ncost = %d\nMenue = %s\nPriority = %d",
+			printf("\nOrderID = %d\nClientName = %s\nclientAddress = %s\nclientNumber = %s\numGuest = %d\ncaterdatestamp = %llu\ncaterLocation = %s\ncost = %d\nMenue = %s\nPriority = %d",
 				temp->OrderID, temp->clientName, temp->clientAddress, temp->clientNumber, temp->numGuest, temp->caterdatestamp, temp->caterLocation, temp->cost, temp->menueName, temp->priority);
 			break;
 		}
@@ -986,7 +1205,39 @@ int navigateOrder(Order * ohead) {
 		case 'p':
 		{
 			system("cls");
-		
+			if (temp->oprev != NULL) {
+				temp = temp->oprev;
+				printf("\nOrderID = %d\nClientName = %s\nclientAddress = %s\nclientNumber = %s\numGuest = %d\ncaterdatestamp = %llu\ncaterLocation = %s\ncost = %d\nMenue = %s\nPriority = %d",
+					temp->OrderID, temp->clientName, temp->clientAddress, temp->clientNumber, temp->numGuest, temp->caterdatestamp, temp->caterLocation, temp->cost, temp->menueName, temp->priority);
+
+			}
+			else {
+				printf("This is the first record, cannot go any back\n");
+
+				printf("\nOrderID = %d\nClientName = %s\nclientAddress = %s\nclientNumber = %s\numGuest = %d\ncaterdatestamp = %llu\ncaterLocation = %s\ncost = %d\nMenue = %s\nPriority = %d",
+					temp->OrderID, temp->clientName, temp->clientAddress, temp->clientNumber, temp->numGuest, temp->caterdatestamp, temp->caterLocation, temp->cost, temp->menueName, temp->priority);
+			}
+			break;
+		}
+
+		case 'f':
+		{
+			system("cls");
+			if (temp->onext != NULL) {
+				temp = temp->onext;
+
+				printf("\nOrderID = %d\nClientName = %s\nclientAddress = %s\nclientNumber = %s\numGuest = %d\ncaterdatestamp = %llu\ncaterLocation = %s\ncost = %d\nMenue = %s\nPriority = %d",
+					temp->OrderID, temp->clientName, temp->clientAddress, temp->clientNumber, temp->numGuest, temp->caterdatestamp, temp->caterLocation, temp->cost, temp->menueName, temp->priority);
+			}
+			else {
+				printf("This is the last record, cannot go any further\n");
+
+				printf("\nOrderID = %d\nClientName = %s\nclientAddress = %s\nclientNumber = %s\numGuest = %d\ncaterdatestamp = %llu\ncaterLocation = %s\ncost = %d\nMenue = %s\nPriority = %d",
+					temp->OrderID, temp->clientName, temp->clientAddress, temp->clientNumber, temp->numGuest, temp->caterdatestamp, temp->caterLocation, temp->cost, temp->menueName, temp->priority);
+			}
+			break;
+		}
+
 		case 'q':
 		{
 			return 0;
