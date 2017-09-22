@@ -823,7 +823,7 @@ void SendEmail(char * email, Order thisorder, string t) {
 	const char * cstr = body.c_str();
 
 	oSmtp->UserName = _T("viamtmp@gmail.com");
-	oSmtp->Password = _T("pdqlidwnnjaecqkt");
+	oSmtp->Password = _T(""); // dont't use the password, use a restricted key access token
 
 	oSmtp->FromAddr = ("viamtmp@gmail.com");
 	oSmtp->AddRecipientEx((email), 0);
